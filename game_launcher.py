@@ -246,14 +246,15 @@ def open_downloads(download_directory: Path | None = None) -> None:
 
 
 def create_windows_shortcuts() -> list[str]:
-    """Create per-user Desktop and Start Menu shortcuts for this launcher."""
+    """Create launcher-folder, Desktop, and Start Menu shortcuts."""
     if os.name != "nt":
-        raise RuntimeError("Desktop and Start Menu shortcuts are currently supported on Windows.")
+        raise RuntimeError("Launcher shortcuts are currently supported on Windows.")
 
     if getattr(sys, "frozen", False):
         target = Path(sys.executable).resolve()
         arguments = ""
         working_directory = target.parent
+        launcher_directory = target.parent
     else:
         python_windowed = Path(sys.executable).with_name("pythonw.exe")
         target = (
@@ -264,6 +265,7 @@ def create_windows_shortcuts() -> list[str]:
         script = Path(__file__).resolve()
         arguments = subprocess.list2cmdline([str(script)])
         working_directory = script.parent
+        launcher_directory = script.parent
 
     def encode(value: str) -> str:
         return base64.b64encode(value.encode("utf-8")).decode("ascii")
@@ -277,11 +279,13 @@ $target = Decode '{encode(str(target))}'
 $arguments = Decode '{encode(arguments)}'
 $workingDirectory = Decode '{encode(str(working_directory))}'
 $icon = Decode '{encode(str(ICON_PATH.resolve()))}'
+$launcherDirectory = Decode '{encode(str(launcher_directory))}'
 $desktop = [Environment]::GetFolderPath('DesktopDirectory')
 $programs = Join-Path ([Environment]::GetFolderPath('Programs')) 'Harbor Wars'
 $null = New-Item -ItemType Directory -Path $programs -Force
 $shell = New-Object -ComObject WScript.Shell
 $shortcuts = @(
+    (Join-Path $launcherDirectory 'Harbor Wars 3D.lnk'),
     (Join-Path $desktop 'Harbor Wars 3D.lnk'),
     (Join-Path $programs 'Harbor Wars 3D.lnk')
 )
@@ -322,8 +326,8 @@ foreach ($path in $shortcuts) {{
             + (f"\n\n{details}" if details else "")
         )
     shortcuts = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    if len(shortcuts) != 2:
-        raise RuntimeError("Windows did not confirm both launcher shortcuts were created.")
+    if len(shortcuts) != 3:
+        raise RuntimeError("Windows did not confirm all three launcher shortcuts were created.")
     return shortcuts
 
 
@@ -528,7 +532,6 @@ class LauncherApp:
         self.messagebox = messagebox
         self.browser = browser
         self.download_directory = load_download_directory()
-        self.download_directory_text = tk.StringVar(value=str(self.download_directory))
         if os.name == "nt":
             shell32 = ctypes.windll.shell32
             shell32.SetCurrentProcessExplicitAppUserModelID.argtypes = [ctypes.c_wchar_p]
@@ -537,6 +540,10 @@ class LauncherApp:
             if result != 0:
                 raise OSError(result, "Could not register the Harbor Wars app identity.")
         self.root = tk.Tk()
+        self.download_directory_text = tk.StringVar(
+            master=self.root,
+            value=str(self.download_directory),
+        )
         self.fullscreen_toggle = FullscreenEscapeToggle()
         self.root.title("Harbor Wars Launcher")
         if ICON_PATH.is_file():
@@ -846,10 +853,11 @@ class LauncherApp:
     def create_shortcuts(self) -> None:
         try:
             create_windows_shortcuts()
-            self.status.set("Desktop and Start Menu shortcuts are ready.")
+            self.status.set("Launcher folder, Desktop, and Start Menu shortcuts are ready.")
             self.messagebox.showinfo(
                 "Shortcuts created",
-                "Harbor Wars 3D shortcuts were added to your Desktop and Start Menu.",
+                "Harbor Wars 3D shortcuts were added beside the launcher, on your Desktop, "
+                "and in your Start Menu.",
                 parent=self.root,
             )
         except RuntimeError as error:
